@@ -1,6 +1,116 @@
----
-title: Week 01 - Solution
-date: "`r Sys.Date()`"
-output: pdf_document
----
+```{r include=FALSE}
+require(rethinking)
+require(tidyverse)
+```
 
+## Exercice 1
+Suppose the globe tossing data (Lecture 2, Chapter 2) had turned out to be 4
+water and 11 land. Construct the posterior distribution.
+
+```{r}
+size <- 100
+n_water <- 4
+n_land <- 11
+n_tosses <- n_water + n_land
+
+p_grid <- seq(from = 0, to = 1, length.out = size)
+
+prior <- rep(1, size)
+
+likelihood <- dbinom(n_water, size = n_tosses, prob = p_grid)
+
+unstd_post <- likelihood * prior
+
+posterior <- unstd_post / sum(unstd_post)
+
+tibble(p = p_grid, post = posterior) %>%
+  ggplot(aes(x = p_grid, y = posterior)) +
+  geom_line() + geom_point() +
+  xlab("probability of water") +
+  ylab("posterior probability") +
+  labs(subtitle = str_c(as.character(size), " examples"))
+```
+
+
+ ## Exercice 2:
+ Using the posterior distribution from 1, compute the posterior
+ predictive distribution for the next 5 tosses of the same globe. I recommend
+ you use the sampling method.
+
+```{r}
+n_simulations <- 1e4
+sample_size <- 5
+
+post_samples <- sample(
+   p_grid,
+   size = n_simulations,
+   replace = TRUE,
+   prob = posterior
+)
+
+w_pred <- rbinom(
+  n_simulations,
+  size = sample_size,
+  prob = post_samples
+)
+
+tibble(w_pred) %>%
+  ggplot(aes(x = w_pred)) +
+  geom_histogram(bins = 18) +
+  xlab("number of predicted water samples") +
+  ylab("Frequency") +
+  labs(title = "Predictive posterior distribution")
+```
+
+## Exercice 3
+Use the posterior predictive distribution from 2 to calculate the probability of 3 or more water samples in the next 5 tosses.
+
+```{r}
+sum(w_pred >= 3) / n_simulations
+```
+
+
+## Exercice 4
+This problem is an optional challenge for people who are
+ taking the course for a second or third time. Suppose you observe W = 5
+ water points, but you forgot to write down how many times the globe was
+ tossed, so you don’t know the number of land points L. Assume that p = 0.7
+ and compute the posterior distribution of the number of tosses N. Hint: Use
+ the binomial distribution.
+ 
+### Answer
+
+$Pr(p_N | W, p_W, N) = \frac{Pr(W,p_W,N|p_N)*Pr(p_N)}{P(W,p_W,N)}$
+
+#### Generative model
+
+The function `sim_Tn_rounds_of_tosses` will simulate `Tn` (default to $1.000$)
+rounds of globe tosses. Each round might consist of 1 to `n` (default to $30$).
+Each toss has the probability `p` (default to $0.7$) of returning water.
+The output is a `tibble` containing each round with its number of tosses `N` and
+count of waters `W`.
+
+```{r}
+sim_Tn_rounds_of_tosses <- function(p=0.7, Tn=1e3, n=30) {
+    N <- sample(1:n, size=Tn, replace=TRUE)
+    W <- sapply(N, function(x) sum(rbinom(x, 1, p)))
+    tibble(N,W)
+}
+```
+
+Extracting data simulated with the default values (for sanity sake, we set the
+seed to `120`):
+
+```{r}
+set.seed(120)
+sim_data <- sim_Tn_rounds_of_tosses()
+sim_data
+sim_data %>%
+    ggplot(aes(x=N, y=W)) +
+    geom_jitter(alpha=0.4) +
+    xlab("N of tosses") +
+    ylab("Count of water (W)") +
+    labs(title="Simulated 1.000 rounds of globe tosses")
+```
+
+a
