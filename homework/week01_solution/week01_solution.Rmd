@@ -1,30 +1,48 @@
+---
+title: "Week 01 solutions"
+author: "Caio Geraldes"
+output:
+  html_document:
+    df_print: paged
+---
+
 ```{r include=FALSE}
 require(rethinking)
 require(tidyverse)
 ```
 
 ## Exercice 1
-Suppose the globe tossing data (Lecture 2, Chapter 2) had turned out to be 4
-water and 11 land. Construct the posterior distribution.
+_Suppose the globe tossing data (Lecture 2, Chapter 2) had turned out to be 4
+water and 11 land. Construct the posterior distribution._
+
+### Answer
+
+Using Grid Approximation:
+
+```{r}
+grid_approximation_pW <- function(W, L, size) {
+    N <- W + L
+    p_grid <- seq(from = 0, to = 1, length.out = size)
+    prior <- rep(1, size)
+    likelihood <- dbinom(W, size = N, prob = p_grid)
+    unstd_post <- likelihood * prior
+    posterior <- unstd_post / sum(unstd_post)
+    tibble(p = p_grid, post = posterior)
+}
+```
 
 ```{r}
 size <- 100
-n_water <- 4
-n_land <- 11
-n_tosses <- n_water + n_land
+W <- 4
+L <- 11
 
-p_grid <- seq(from = 0, to = 1, length.out = size)
+model <- grid_approximation_pW(W, L, size)
+model
+```
 
-prior <- rep(1, size)
-
-likelihood <- dbinom(n_water, size = n_tosses, prob = p_grid)
-
-unstd_post <- likelihood * prior
-
-posterior <- unstd_post / sum(unstd_post)
-
-tibble(p = p_grid, post = posterior) %>%
-  ggplot(aes(x = p_grid, y = posterior)) +
+```{r}
+model %>%
+  ggplot(aes(x = p, y = post)) +
   geom_line() + geom_point() +
   xlab("probability of water") +
   ylab("posterior probability") +
@@ -32,20 +50,21 @@ tibble(p = p_grid, post = posterior) %>%
 ```
 
 
- ## Exercice 2:
- Using the posterior distribution from 1, compute the posterior
+## Exercice 2:
+ _Using the posterior distribution from 1, compute the posterior
  predictive distribution for the next 5 tosses of the same globe. I recommend
- you use the sampling method.
+ you use the sampling method._
 
 ```{r}
 n_simulations <- 1e4
 sample_size <- 5
+p_grid <- seq(from = 0, to = 1, length.out = size)
 
 post_samples <- sample(
    p_grid,
    size = n_simulations,
    replace = TRUE,
-   prob = posterior
+   prob = model$post
 )
 
 w_pred <- rbinom(
@@ -63,7 +82,7 @@ tibble(w_pred) %>%
 ```
 
 ## Exercice 3
-Use the posterior predictive distribution from 2 to calculate the probability of 3 or more water samples in the next 5 tosses.
+_Use the posterior predictive distribution from 2 to calculate the probability of 3 or more water samples in the next 5 tosses._
 
 ```{r}
 sum(w_pred >= 3) / n_simulations
@@ -71,46 +90,171 @@ sum(w_pred >= 3) / n_simulations
 
 
 ## Exercice 4
-This problem is an optional challenge for people who are
+_This problem is an optional challenge for people who are
  taking the course for a second or third time. Suppose you observe W = 5
  water points, but you forgot to write down how many times the globe was
  tossed, so you don’t know the number of land points L. Assume that p = 0.7
  and compute the posterior distribution of the number of tosses N. Hint: Use
- the binomial distribution.
+ the binomial distribution._
  
 ### Answer
 
-$Pr(p_N | W, p_W, N) = \frac{Pr(W,p_W,N|p_N)*Pr(p_N)}{P(W,p_W,N)}$
+The probability of round of tosses having $N$ tosses can be approximated with
+a Grid Approximation, just like the probability of water $p_W$ was in the last
+exercises.
+Since the limit of $N$ is $1...\infty$ and N must be an integer, in contrast to
+$p_W$'s $0...1$, the grid can not be expressed by non-integer values and must
+have an upper bound $N_{max}$.
 
-#### Generative model
-
-The function `sim_Tn_rounds_of_tosses` will simulate `Tn` (default to $1.000$)
-rounds of globe tosses. Each round might consist of 1 to `n` (default to $30$).
-Each toss has the probability `p` (default to $0.7$) of returning water.
-The output is a `tibble` containing each round with its number of tosses `N` and
-count of waters `W`.
+The Grid Approximation for a range of tosses is produced with help of the functions `make_n_grid` and `grid_approximation_tosses`:
 
 ```{r}
-sim_Tn_rounds_of_tosses <- function(p=0.7, Tn=1e3, n=30) {
-    N <- sample(1:n, size=Tn, replace=TRUE)
-    W <- sapply(N, function(x) sum(rbinom(x, 1, p)))
-    tibble(N,W)
+make_n_grid <- function(W, N_max) {
+  seq(from = W, to = N_max, length.out = (N_max - W + 1))
+}
+
+grid_approximation_tosses <- function(W, p_W, N_max) {
+  n_grid <- make_n_grid(W, N_max)
+  likelihood_w_given_n <- dbinom(W, n_grid, p_W)
+  unstd_post <- likelihood_w_given_n
+  posterior <- unstd_post / sum(unstd_post)
+  tibble(n = n_grid, post = round(posterior,3))
 }
 ```
 
-Extracting data simulated with the default values (for sanity sake, we set the
-seed to `120`):
+In this answer we use $N_{max} = 30$, as by 20 tosses, the probability of $N$ with $p_W = 0,7$ and $W=5$ is presumably very low.
 
 ```{r}
-set.seed(120)
-sim_data <- sim_Tn_rounds_of_tosses()
-sim_data
-sim_data %>%
-    ggplot(aes(x=N, y=W)) +
-    geom_jitter(alpha=0.4) +
-    xlab("N of tosses") +
-    ylab("Count of water (W)") +
-    labs(title="Simulated 1.000 rounds of globe tosses")
+N_max <- 30
+W <- 5
+p_W <- 0.7
+
+model <- grid_approximation_tosses(W, p_W, N_max)
+model
 ```
 
-a
+```{r echo=FALSE}
+model %>%
+  ggplot(aes(x = n, y = post)) +
+  geom_line() + geom_point() +
+  xlab("N tosses") +
+  ylab("posterior probability")
+```
+
+Drawing $10.000$ samples from the posterior distribution:
+
+```{r}
+n_simulations <- 1e4
+n_grid <- make_n_grid(W, N_max)
+post_samples <- sample(
+   n_grid,
+   size = n_simulations,
+   replace = TRUE,
+    prob = model$post
+)
+hpdi <- HPDI(post_samples)
+hpdi
+```
+
+```{r echo=FALSE}
+tibble(post_samples) %>%
+  ggplot(aes(x = post_samples)) +
+  geom_bar(aes(fill=sapply(post_samples, function(x) hpdi[1] <= x && x <= hpdi[2]))) +
+  xlab("number of predicted tosses") +
+  ylab("Frequency") +
+  labs(title = "Predictive posterior distribution of N tosses given W=5, pW = 0.7", subtitle="89% HPDI in blue") +
+  theme(legend.position="none")
+```
+
+### Testing
+
+To test the model, we will assume a longer tossing run, with $W=50$ and a $N_{max} = 100$:
+
+```{r}
+N_max <- 100
+W <- 50
+p_W <- 0.7
+
+model <- grid_approximation_tosses(W, p_W, N_max)
+model
+```
+
+```{r echo=FALSE}
+model %>%
+  ggplot(aes(x = n, y = post)) +
+  geom_line() + geom_point() +
+  xlab("N tosses") +
+  ylab("posterior probability")
+```
+
+Drawing $10.000$ samples from the posterior distribution:
+
+```{r}
+n_simulations <- 1e4
+n_grid <- make_n_grid(W, N_max)
+post_samples <- sample(
+   n_grid,
+   size = n_simulations,
+   replace = TRUE,
+    prob = model$post
+)
+
+hpdi <- HPDI(post_samples)
+hpdi
+```
+
+```{r echo=FALSE}
+tibble(post_samples) %>%
+  ggplot(aes(x = post_samples)) +
+  geom_bar(aes(fill=sapply(post_samples, function(x) hpdi[1] <= x && x <= hpdi[2]))) +
+  xlab("number of predicted tosses") +
+  ylab("Frequency") +
+  labs(title = "Predictive posterior distribution of N tosses given W=50, pW = 0.7", subtitle="89% HPDI in blue") +
+  theme(legend.position="none")
+```
+
+
+By changing $p_W$ for a value lower than $0.5$, say $p_W = 0.3$, the likelihood of longer tossing runs increases:
+
+
+```{r}
+N_max <- 100
+W <- 50
+p_W <- 0.3
+
+model <- grid_approximation_tosses(W, p_W, N_max)
+model
+```
+
+```{r echo=FALSE}
+model %>%
+  ggplot(aes(x = n, y = post)) +
+  geom_line() + geom_point() +
+  xlab("N tosses") +
+  ylab("posterior probability")
+```
+
+Drawing $10.000$ samples from the posterior distribution:
+
+```{r}
+n_simulations <- 1e4
+n_grid <- make_n_grid(W, N_max)
+post_samples <- sample(
+   n_grid,
+   size = n_simulations,
+   replace = TRUE,
+    prob = model$post
+)
+hpdi <- HPDI(post_samples)
+hpdi
+```
+
+```{r echo=FALSE}
+tibble(post_samples) %>%
+  ggplot(aes(x = post_samples)) +
+  geom_bar(aes(fill=sapply(post_samples, function(x) hpdi[1] <= x && x <= hpdi[2]))) +
+  xlab("number of predicted tosses") +
+  ylab("Frequency") +
+  labs(title = "Predictive posterior distribution of N tosses given W=50, pW = 0.3", subtitle="89% HPDI in blue") +
+  theme(legend.position="none")
+```
